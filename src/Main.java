@@ -11,7 +11,7 @@ public class Main {
             Server server = new Server(8081);
             server.accept();
         } else {
-            Client client = new Client("localhost", 8081);
+            Client client = new Client("3.36.108.241", 8081, args[0]);
         }
     }
 }
@@ -41,6 +41,7 @@ class Server extends Thread{
     int port;
     ServerSocket serverSocket;
     ArrayList<SocketIO> sockets = new ArrayList<>();
+    ArrayList<String> messages = new ArrayList<>();
     class ServerThread extends Thread {
         SocketIO socket;
         InetSocketAddress isa;
@@ -57,15 +58,28 @@ class Server extends Thread{
 
         public void run() {
             String message = null;
+            for (String s: messages) {
+                try {
+                    socket.writeLine(s);
+                } catch (IOException e) {
+                    System.out.println(isa+" disconnected.");
+                    messages.add(isa+" disconnected.");
+                    sockets.remove(socket);
+                    return;
+                }
+            }
             while (true) {
                 try {
                     message = socket.readLine();
                 } catch (IOException e) {
                     System.out.println(isa+" disconnected.");
+                    messages.add(isa+" disconnected.");
                     sockets.remove(socket);
+                    return;
                 }
                 if (message == null || message.equals("exit") || message.equals("null")) {
                     System.out.println(isa+" disconnected.");
+                    messages.add(isa+" disconnected.");
                     sockets.remove(socket);
                     try {
                         socket.socket.close();
@@ -73,13 +87,20 @@ class Server extends Thread{
                     return;
                 }
 
-                String toSend = isa + ": " + message;
+                String toSend = message;
                 System.out.println("\t" + toSend);
+                messages.add(toSend);
+                while (messages.size() > 100) {
+                    messages.remove(0);
+                }
                 for (SocketIO s : sockets) {
                     try {
                         s.writeLine(toSend);
                     } catch (IOException e) {
+                        System.out.println(isa+" disconnected.");
+                        messages.add(isa+" disconnected.");
                         sockets.remove(s);
+                        return;
                     }
                 }
             }
@@ -113,7 +134,6 @@ class Client {
     BufferedReader br;
     BufferedWriter bw;
     BufferedReader systemRead;
-    ArrayList<String> messages = new ArrayList<>();
     class ClientReceiver extends Thread {
         public void run() {
             String m;
@@ -122,7 +142,6 @@ class Client {
                     br = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                     m = br.readLine();
                     System.out.println(m);
-                    messages.add(m);
                 } catch (IOException e) {
                     //e.printStackTrace();
                 }
@@ -130,9 +149,9 @@ class Client {
         }
     }
 
-    Client(String connect_to, int port) {
+    Client(String connect_to, int port, String nickname) {
         this.port = port;
-        System.out.println(System.getProperty("file.encoding"));
+        // System.out.println(System.getProperty("file.encoding"));
         try {
             socket = new Socket(connect_to, port);
             System.out.println("Connected to " + socket.getRemoteSocketAddress());
@@ -143,11 +162,8 @@ class Client {
             clientReceiver.start();
             while (!socket.isClosed()) {
                 String payload = systemRead.readLine();
-                System.out.print("\033[H\033[2J"); //clear terminal
-                for (String s: messages)
-                    System.out.println(s);
 
-                bw.write(payload+"\n");
+                bw.write(nickname+": "+payload+"\n");
                 bw.flush();
                 if (payload.equals("exit"))
                     break;
